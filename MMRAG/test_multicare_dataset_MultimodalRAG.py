@@ -1,5 +1,5 @@
 
-from training_MMRAG_multicare import ImprovedMRAGWithTraining
+from training_MMRAG_multicare import MRAGWithTraining
 from utils import clean_reference_text, evaluate_all
 import os
 import json
@@ -56,11 +56,10 @@ df = pd.read_csv('../medical_datasets/brain_tumor_multimodal/cases.csv')
 case_text_map = dict(zip(df['case_id'], df['case_text'].fillna('')))
 
 # Istanzia oggetti
-rag_img = ImprovedMRAGWithTraining(
+rag_img = MRAGWithTraining(
             query_path="",
             top_k=5,
             approach="multimodal",
-            attention_type='cross_modal',
             auto_train=True )
 
 

@@ -1,5 +1,5 @@
 from monai.networks.nets import SegResNet
-from training_MMRAG_rad_genome import ImprovedMRAGWithTraining
+from training_MMRAG_rad_genome import MRAGWithTraining
 from utils import clean_reference_text, evaluate_all
 import os
 import json

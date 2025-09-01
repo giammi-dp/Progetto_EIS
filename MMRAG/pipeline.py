@@ -3,7 +3,7 @@ from utils import evaluate_all, clean_reference_text
 from monai.networks.nets import SegResNet
 from segmentator import Segmentator
 
-from MMRAG.training_MMRAG_rad_genome import ImprovedMRAGWithTraining
+from MMRAG.training_MMRAG_rad_genome import MRAGWithTraining
 from utils import clean_reference_text
 import os
 import json

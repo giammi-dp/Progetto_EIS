@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 
-class CrossModalAttentionN(nn.Module):
+class Fusion(nn.Module):
     def __init__(self, emb_dim = 512):
         super().__init__()
         self.emb_dim = emb_dim

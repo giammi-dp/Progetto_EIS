@@ -5,29 +5,29 @@ import json
 from PIL import Image
 from typing import List
 import logging
-from MMRAG.attention_file import CrossModalAttentionN
+from MMRAG.fusion_file import Fusion
 import torch.nn.functional as F
 import pandas as pd
-from MMRAG.MMRAG_multicare import ImprovedMRAG
+from MMRAG.MMRAG_multicare import MRAG
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class AttentionTrainer:
+class Trainer:
     """
-    Trainer per i moduli attention del MRAG
+    Trainer per il fusion module del MRAG
     """
 
-    def __init__(self, attention_model, device):
-        self.attention_model = attention_model.to(device)
+    def __init__(self, fusion_model, device):
+        self.fusion_model = fusion_model.to(device)
         self.device = device
-        self.optimizer = torch.optim.Adam(attention_model.parameters(), lr=0.001)
+        self.optimizer = torch.optim.Adam(fusion_model_model.parameters(), lr=0.001)
 
     def train_self_supervised(self, mrag_instance, epochs: int = 50):
         """
-        Self-supervised training usando consistency e diversity losses
+        Self-supervised training hybrid cross modal loss
         """
         logger.info(f"Starting self-supervised training for {epochs} epochs...")
 
@@ -38,7 +38,7 @@ class AttentionTrainer:
             logger.error("No training data prepared!")
             return
 
-        self.attention_model.train()
+        self.fusion_model.train()
 
         for epoch in range(epochs):
             total_loss = 0
@@ -70,7 +70,7 @@ class AttentionTrainer:
             if epoch % 10 == 0:
                 logger.info(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}")
 
-        self.attention_model.eval()
+        self.fusion_model.eval()
         logger.info("Training completed!")
 
     def _prepare_training_data(self, mrag_instance, batch_size: int = 16):
@@ -132,9 +132,9 @@ class AttentionTrainer:
 
     def hybrid_cross_modal_loss(self, texts: List[str], images: List, mrag_instance):
         """
-        Combinazione di Alignment + Contrastive per il meglio dei due mondi
+        Combinazione di Alignment + Contrastive
         """
-        # Encode texts e images
+
         text_embeddings = torch.tensor(
             mrag_instance._encode_text(texts),
             device=self.device,
@@ -146,10 +146,10 @@ class AttentionTrainer:
             dtype=torch.float32
         )
 
-        result = self.attention_model(text_embeddings, image_embeddings)
+        result = self.fusion_model(text_embeddings, image_embeddings)
         fused_emb = result[0] if isinstance(result, tuple) else result
 
-        # === PARTE 1: ALIGNMENT (sempre attiva) ===
+        # === PARTE ALIGNMENT  ===
         text_norm = F.normalize(text_embeddings, p=2, dim=1)
         image_norm = F.normalize(image_embeddings, p=2, dim=1)
         fused_norm = F.normalize(fused_emb, p=2, dim=1)
@@ -158,65 +158,64 @@ class AttentionTrainer:
         image_sim = torch.sum(image_norm * fused_norm, dim=1)
 
         alignment_loss = (
-                F.relu(0.8 - text_sim).mean() +  # Penalty se similarità < 0.8
+                F.relu(0.8 - text_sim).mean() +  # Penalizza se similarità < 0.8
                 F.relu(0.8 - image_sim).mean()
         )
 
-        # === PARTE 2: CONTRASTIVE (se batch size lo permette) ===
+        # === PARTE CONTRASTIVE (NEGATIVI DIFFICILI) ===
         contrastive_loss = torch.tensor(0.0, device=self.device)
         batch_size = text_norm.size(0)
 
-        if batch_size >= 4:  # Contrastive efficace con almeno 4 samples
-            # Simplified contrastive: hardest negatives
-            for i in range(batch_size):
-                # Find hardest negative text (highest similarity to fused[i])
-                neg_text_sims = torch.sum(fused_norm[i:i + 1] * text_norm, dim=1)
-                neg_text_sims[i] = -1.0  # Mask self
-                hardest_neg_text_sim = neg_text_sims.max()
 
-                # Same for images
-                neg_image_sims = torch.sum(fused_norm[i:i + 1] * image_norm, dim=1)
-                neg_image_sims[i] = -1.0  # Mask self
-                hardest_neg_image_sim = neg_image_sims.max()
+        for i in range(batch_size):
+            # Trova il negativo più difficile per fused_emb considerando text_emb
+            neg_text_sims = torch.sum(fused_norm[i:i + 1] * text_norm, dim=1)
+            neg_text_sims[i] = -1.0
+            hardest_neg_text_sim = neg_text_sims.max()
 
-                # Margin loss: positive should be higher than negative by margin
-                margin = 0.2
-                text_margin_loss = F.relu(hardest_neg_text_sim - text_sim[i] + margin)
-                image_margin_loss = F.relu(hardest_neg_image_sim - image_sim[i] + margin)
+            # Trova il negativo più difficile per fused_emb considerando img_emb
+            neg_image_sims = torch.sum(fused_norm[i:i + 1] * image_norm, dim=1)
+            neg_image_sims[i] = -1.0
+            hardest_neg_image_sim = neg_image_sims.max()
 
-                contrastive_loss += (text_margin_loss + image_margin_loss) / (2 * batch_size)
+            # Applicazione del margine: il positivo deve superare il negativo di un certo margine
+            margin = 0.2
+            text_margin_loss = F.relu(hardest_neg_text_sim - text_sim[i] + margin)
+            image_margin_loss = F.relu(hardest_neg_image_sim - image_sim[i] + margin)
 
-        return alignment_loss + 0.3 * contrastive_loss
+            contrastive_loss += (text_margin_loss + image_margin_loss) / (2 * batch_size)
+
+        return (alignment_loss + contrastive_loss) / 2
 
 
 
 # Integrazione MRAG
-class ImprovedMRAGWithTraining(ImprovedMRAG):
+class MRAGWithTraining(MRAG):
     """
-    Versione del MRAG con training automatico dell'attention
+    Versione del MRAG con training automatico del fusion module
     """
 
     def __init__(self, query_path: str, top_k: int = 3, approach: str = "multimodal",
-                 attention_type: str = 'cross_modal', auto_train: bool = True):
-        super().__init__(query_path, top_k, approach, attention_type)
+                 auto_train: bool = True):
+        super().__init__(query_path, top_k, approach)
 
-        self.is_attention_trained = False
+        self.is_fusion_trained = False
 
-        if self.approach == 'multimodal' and self.attention_type is not None and auto_train:
-            self._train_attention_if_needed()
+        if self.approach == 'multimodal' and auto_train:
+            self._train_fusion_if_needed()
 
-    def _train_attention_if_needed(self):
+    def _train_fusion_if_needed(self):
         """
-        Allena l'attention se non è già stato fatto
+        Allena fusion model se non è già stato fatto
         """
 
-        model_path = f"./pesi_attention/attention_{self.attention_type}_trained_multicare.pth"
+        model_path = f"./pesi_fusion/fusion_trained_multicare.pth"
 
         if os.path.exists(model_path):
-            logger.info(f"Loading pre-trained attention model: {model_path}")
+            logger.info(f"Loading pre-trained fusion model: {model_path}")
             try:
-                self.attention_fusion_model.load_state_dict(torch.load(model_path, map_location=self.device))
-                self.is_attention_trained = True
+                self.fusion_model.load_state_dict(torch.load(model_path, map_location=self.device))
+                self.is_fusion_trained = True
                 logger.info(" Pre-trained model loaded successfully!")
             except Exception as e:
                 logger.warning(f"Failed to load pre-trained model: {e}. Training from scratch...")
@@ -226,27 +225,27 @@ class ImprovedMRAGWithTraining(ImprovedMRAG):
             self._train_from_scratch(model_path)
 
     def _train_from_scratch(self, model_path):
-        """Train the attention model from scratch"""
-        if not hasattr(self, 'attention_fusion_model'):
-            logger.error("No attention model to train!")
+        """Train the fusion model from scratch"""
+        if not hasattr(self, 'fusion_model'):
+            logger.error("No fusion model to train!")
             return
 
-        logger.info("Training attention model...")
-        trainer = AttentionTrainer(self.attention_fusion_model, self.device)
+        logger.info("Training fusion model...")
+        trainer = Trainer(self.fusion_model, self.device)
         trainer.train_self_supervised(self, epochs=50)
 
         # Salva il modello allenato
         try:
-            torch.save(self.attention_fusion_model.state_dict(), model_path)
-            self.is_attention_trained = True
-            logger.info(f" Attention model trained and saved to: {model_path}")
+            torch.save(self.fusion_model.state_dict(), model_path)
+            self.is_fusion_trained = True
+            logger.info(f" Fusion model trained and saved to: {model_path}")
         except Exception as e:
             logger.error(f"Failed to save model: {e}")
-            self.is_attention_trained = True  # Continue anyway
+            self.is_fusion_trained = True  # Continue anyway
 
 
 def train_and_test():
-    """Test function with comprehensive error handling"""
+    """Funzione per testare"""
     query_path = "../medical_datasets/brain_tumor_multimodal/images/PMC1/PMC10/PMC10018421_crn-2023-0015-0001-529741_f1_a_1_4.webp"
 
     try:
@@ -255,14 +254,13 @@ def train_and_test():
             logger.error(f"Query directory not found: {os.path.dirname(query_path)}")
             return None
 
-        logger.info("Starting MRAG with attention training...")
+        logger.info("Starting MRAG with fusion training...")
 
         # Usa la versione con training automatico
-        rag = ImprovedMRAGWithTraining(
+        rag = MRAGWithTraining(
             query_path,
             top_k=5,
             approach="multimodal",
-            attention_type='cross_modal',
             auto_train=True  # Training automatico
         )
 
@@ -294,13 +292,10 @@ def train_and_test():
 
 if __name__ == "__main__":
     # Scegli il test da eseguire
-    print(" Running attention-based MRAG...")
+    print(" Running fusion-based MRAG...")
 
     # Opzione 1: Test completo (può richiedere tempo)
     results = train_and_test()
-
-    # Opzione 2: Test veloce (uncomment per usare)
-    # results = quick_test()
 
     if results:
         print(f" Test completed! Retrieved {len(results)} results")

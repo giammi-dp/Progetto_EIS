@@ -8,24 +8,22 @@ import nibabel as nib
 from PIL import Image
 import pickle
 from typing import List, Tuple
-from MMRAG.attention_file import CrossModalAttentionN
+from MMRAG.fusion_file import Fusion
 import pandas as pd
 
 
 
-class ImprovedMRAG:
-    def __init__(self, query_path: str, top_k: int = 3, approach: str = "multimodal", attention_type : str = 'cross_modal',):
+class MRAG:
+    def __init__(self, query_path: str, top_k: int = 3, approach: str = "multimodal"):
         """
         Args:
             query_path: Path al file MRI
             top_k: Numero di risultati da recuperare
             approach: "cross_modal" or "multimodal"
-            attention_type: Type of attention mechanism
         """
         self.query_path = query_path
         self.top_k = top_k
         self.approach = approach
-        self.attention_type = attention_type
         self.report_texts = []
         self.image_ids = []
 
@@ -45,11 +43,11 @@ class ImprovedMRAG:
         self.db_path = f"vector_db/vector_db_{approach}_multicare.index"
         self.metadata_path = f"json_e_metadata_report_medici/metadata_{approach}_multicare.pkl"
 
-        if self.approach == 'multimodal' and self.attention_type != None:
+        if self.approach == 'multimodal':
             embed_dim = 512
-            self.attention_fusion_model = CrossModalAttentionN(embed_dim)
+            self.fusion_model = Fusion(embed_dim).to(self.device)
         else:
-            raise ValueError(f"Unknown attention type: {self.attention_type}")
+            raise ValueError(f"Unknown model")
 
     def _load_model(self):
         """Load BiomedCLIP model and preprocessing"""
@@ -86,29 +84,28 @@ class ImprovedMRAG:
     def get_tumor_slice(self, mri_path: str, seg_path: str) -> Image.Image:
         """Extract the slice with maximum tumor content and preprocess it properly"""
         try:
-            # Load volumes
+            # Carica i volumi
             mri_img = nib.load(mri_path).get_fdata()
             seg_img = nib.load(seg_path).get_fdata()
 
-            # Find slice with maximum tumor content
+            # Trova la slice con massimo contenuto tumorale
             tumor_presence = np.sum(seg_img > 0, axis=(0, 1))
             best_slice_idx = np.argmax(tumor_presence)
 
-            # Extract slice
+            # Estrazione della slice
             image_slice = mri_img[:, :, best_slice_idx]
 
-            # Improved preprocessing - preserve more information
-            # Clip extreme values (remove outliers)
+            # Rimozione outliers
             p1, p99 = np.percentile(image_slice[image_slice > 0], [1, 99])
             image_slice = np.clip(image_slice, p1, p99)
 
-            # Normalize to 0-255 with better contrast
+            # Normalizzazione 0-255
             if np.ptp(image_slice) > 0:
                 image_slice = ((image_slice - np.min(image_slice)) / np.ptp(image_slice) * 255).astype(np.uint8)
             else:
                 image_slice = np.zeros_like(image_slice, dtype=np.uint8)
 
-            # Convert to RGB PIL image
+            # Conversione in una RGB image
             pil_image = Image.fromarray(image_slice).convert('RGB')
 
             return pil_image
@@ -127,7 +124,7 @@ class ImprovedMRAG:
 
     def _encode_image(self, images: List[Image.Image]) -> np.ndarray:
         """Encode images using BiomedCLIP"""
-        # Preprocess images
+        # Preprocess dell'image usando il preprocess di BiomedCLIP
         image_tensors = []
         for img in images:
             tensor = self.preprocess(img).unsqueeze(0)
@@ -155,14 +152,14 @@ class ImprovedMRAG:
 
         #print(f"Creating new Vector DB with {self.approach} approach...")
 
-        # Load data
+        # Caricamento dei dati
         with open("../medical_datasets/brain_tumor_multimodal/image_metadata_train.json") as f:
             image_meta = [json.loads(line) for line in f if line.strip()]
 
         image_dir = "../medical_datasets/brain_tumor_multimodal/images"
         embeddings = []
 
-        # Process data in batches for efficiency
+
         batch_size = 32
         batch_reports = []
         batch_images = []
@@ -202,19 +199,19 @@ class ImprovedMRAG:
             self.report_texts.extend(batch_reports)
             self.image_ids.extend(batch_ids)
 
-        # Build and save FAISS index
+
         if not embeddings:
             raise ValueError("No embeddings created!")
 
         embeddings_array = np.array(embeddings).astype('float32')
         dim = embeddings_array.shape[1]
 
-        # Use IndexFlatIP for cosine similarity (since we L2 normalized)
+        # Utilizzo di IndexFlatIP per cosine similarity vista la L2 norm eseguita
         index = faiss.IndexFlatIP(dim)
         index.add(embeddings_array)
         faiss.write_index(index, self.db_path)
 
-        # Save metadata
+        # Salvataggio metadati
         metadata = {
             'report_texts': self.report_texts,
             'image_ids': self.image_ids
@@ -234,27 +231,27 @@ class ImprovedMRAG:
             return [emb for emb in text_embeddings]
 
         elif self.approach == "multimodal":
-            # Approach B: Combine text and image embeddings
+            # Combine text and image embeddings
             text_embeddings = self._encode_text(reports)
             image_embeddings = self._encode_image(images)
 
             text_embeddings_torch = torch.from_numpy(text_embeddings).to(self.device)
             image_embeddings_torch = torch.from_numpy(image_embeddings).to(self.device)
 
-            if self.attention_fusion_model:
-                self.attention_fusion_model.eval()
+            if self.fusion_model:
+                self.fusion_model.eval()
                 with torch.no_grad():
-                    fused_emb_torch = self.attention_fusion_model(
+                    fused_emb_torch = self.fusion_model(
                         text_embeddings_torch, image_embeddings_torch
                     )
 
-                    # Molti modelli di attenzione restituiscono più valori. Gestiamo i casi.
+                    # Nel caso vengano restituiti più valori
                     if isinstance(fused_emb_torch, tuple):
                         fused_emb_torch = fused_emb_torch[0]
 
                 fused_embeddings_np = fused_emb_torch.cpu().numpy()
 
-                # Normalizzazione finale se non gestita dal modello di attenzione
+                # Normalizzazione
                 norms = np.linalg.norm(fused_embeddings_np, axis=1, keepdims=True)
                 fused_embeddings_np = fused_embeddings_np / (norms + 1e-8)
 
@@ -271,12 +268,9 @@ class ImprovedMRAG:
 
         # Encode query based on approach
         if self.approach == "cross_modal":
-            # Query with image embedding against text embeddings
             query_embedding = self._encode_image([query_image])
 
         elif self.approach == "multimodal":
-            # For multimodal, we only have image for query, so use image embedding
-            # In a real scenario, you might want to include query text too
             query_embedding = self._encode_image([query_image])
 
         # Search
