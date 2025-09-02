@@ -200,13 +200,13 @@ class MRAGWithTraining(MRAG):
     Versione del MRAG con training automatico del fusion model
     """
 
-    def __init__(self, query_path: str, type, top_k: int = 3, approach: str = "multimodal",
+    def __init__(self, query_path: str, type, top_k: int = 3,
                  auto_train: bool = True):
-        super().__init__(query_path, type, top_k, approach)
+        super().__init__(query_path, type, top_k)
 
         self.is_fusion_trained = False
 
-        if self.approach == 'multimodal' and auto_train:
+        if auto_train:
             self._train_fusion_if_needed()
 
     def _train_fusion_if_needed(self):

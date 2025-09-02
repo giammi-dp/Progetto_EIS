@@ -59,7 +59,6 @@ case_text_map = dict(zip(df['case_id'], df['case_text'].fillna('')))
 rag_img = MRAGWithTraining(
             query_path="",
             top_k=5,
-            approach="multimodal",
             auto_train=True )
 
 

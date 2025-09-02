@@ -80,7 +80,6 @@ for img_id in tqdm(test_meta.keys(), desc="Test loop"):
         query_path=path,
         type=type,
         top_k=5,
-        approach="multimodal",
         auto_train=True)
 
     similar = rag_img.run(None)

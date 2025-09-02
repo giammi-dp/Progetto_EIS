@@ -12,7 +12,7 @@ from MMRAG.fusion_file import Fusion
 
 
 class MRAG:
-    def __init__(self, query_path: str, type, top_k: int = 3, approach: str = "multimodal"):
+    def __init__(self, query_path: str, type, top_k: int = 3):
         """
         Args:
             query_path: Path al file MRI
@@ -21,7 +21,6 @@ class MRAG:
         """
         self.query_path = query_path
         self.top_k = top_k
-        self.approach = approach
         self.report_texts = []
         self.image_ids = []
         self.type = type
@@ -38,14 +37,13 @@ class MRAG:
         self._load_model()
 
         # Paths for saving/loading
-        self.db_path = f"./vector_db/vector_db_{approach}_{self.type}.index"
-        self.metadata_path = f"./json_e_metadata_report_medici/metadata_{approach}_{self.type}.pkl"
+        self.db_path = f"./vector_db/vector_db_multimodal_{self.type}.index"
+        self.metadata_path = f"./json_e_metadata_report_medici/metadata_multimodal_{self.type}.pkl"
 
-        if self.approach == 'multimodal':
-            embed_dim = 512
-            self.fusion_model = Fusion(embed_dim).to(self.device)
-        else:
-            raise ValueError(f"Unknown fusion model")
+
+        embed_dim = 512
+        self.fusion_model = Fusion(embed_dim).to(self.device)
+
 
     def _load_model(self):
         """Load BiomedCLIP model and preprocessing"""
@@ -223,40 +221,32 @@ class MRAG:
         #print(f"Vector DB created with {len(embeddings)} embeddings")
 
     def _process_batch(self, reports: List[str], images: List[Image.Image]) -> List[np.ndarray]:
-        """Process a batch of reports and images based on the chosen approach"""
+        """Process a batch of reports and images"""
 
-        if self.approach == "cross_modal":
-            text_embeddings = self._encode_text(reports)
-            return [emb for emb in text_embeddings]
+        text_embeddings = self._encode_text(reports)
+        image_embeddings = self._encode_image(images)
 
-        elif self.approach == "multimodal":
-            text_embeddings = self._encode_text(reports)
-            image_embeddings = self._encode_image(images)
+        text_embeddings_torch = torch.from_numpy(text_embeddings).to(self.device)
+        image_embeddings_torch = torch.from_numpy(image_embeddings).to(self.device)
 
-            text_embeddings_torch = torch.from_numpy(text_embeddings).to(self.device)
-            image_embeddings_torch = torch.from_numpy(image_embeddings).to(self.device)
+        if self.fusion_model:
+            self.fusion_model.eval()
+            with torch.no_grad():
+                fused_emb_torch = self.fusion_model(
+                    text_embeddings_torch, image_embeddings_torch
+                )
 
-            if self.fusion_model:
-                self.fusion_model.eval()
-                with torch.no_grad():
-                    fused_emb_torch = self.fusion_model(
-                        text_embeddings_torch, image_embeddings_torch
-                    )
+                # Nel caso vengano restituiti più valori
+                if isinstance(fused_emb_torch, tuple):
+                    fused_emb_torch = fused_emb_torch[0]
 
-                    # Nel caso vengano restituiti più valori
-                    if isinstance(fused_emb_torch, tuple):
-                        fused_emb_torch = fused_emb_torch[0]
+            fused_embeddings_np = fused_emb_torch.cpu().numpy()
+            # Normalizzazione finale se non gestita dal modello di attenzione
+            norms = np.linalg.norm(fused_embeddings_np, axis=1, keepdims=True)
+            fused_embeddings_np = fused_embeddings_np / (norms + 1e-8)
 
-                fused_embeddings_np = fused_emb_torch.cpu().numpy()
+            return [emb for emb in fused_embeddings_np]
 
-                # Normalizzazione finale se non gestita dal modello di attenzione
-                norms = np.linalg.norm(fused_embeddings_np, axis=1, keepdims=True)
-                fused_embeddings_np = fused_embeddings_np / (norms + 1e-8)
-
-                return [emb for emb in fused_embeddings_np]
-
-        else:
-            raise ValueError(f"Unknown approach: {self.approach}")
 
     def retrieve(self, slice_idx) -> List[Tuple[str, str, float]]:
         """Retrieve most similar reports for the query image"""
@@ -272,12 +262,8 @@ class MRAG:
             #print(f"Error processing query image: {e}")
             raise
 
-        # Encode query based on approach
-        if self.approach == "cross_modal":
-            query_embedding = self._encode_image([query_image])
 
-        elif self.approach == "multimodal":
-            query_embedding = self._encode_image([query_image])
+        query_embedding = self._encode_image([query_image])
 
         # Search
         scores, indices = self.index.search(query_embedding, self.top_k)
