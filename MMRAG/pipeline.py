@@ -92,7 +92,6 @@ def run(image_id, prompt_user):
             query_path=path,
             type=type,
             top_k=3,
-            approach="multimodal",
             auto_train=True)
 
     similar = rag_img.run(slice_idx)
