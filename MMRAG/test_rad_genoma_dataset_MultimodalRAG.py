@@ -59,7 +59,7 @@ with open('json_e_metadata_report_medici/global_finding_test.json') as f:
 
 results = []
 
-test_meta = dict(list(test_meta.items())[1:])
+test_meta = dict(list(test_meta.items()))
 
 for img_id in tqdm(test_meta.keys(), desc="Test loop"):
     print(f'Processing {img_id}')

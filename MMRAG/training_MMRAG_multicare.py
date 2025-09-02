@@ -23,7 +23,7 @@ class Trainer:
     def __init__(self, fusion_model, device):
         self.fusion_model = fusion_model.to(device)
         self.device = device
-        self.optimizer = torch.optim.Adam(fusion_model_model.parameters(), lr=0.001)
+        self.optimizer = torch.optim.AdamW(fusion_model.parameters(), lr=0.001, weight_decay=0.01)
 
     def train_self_supervised(self, mrag_instance, epochs: int = 50):
         """
