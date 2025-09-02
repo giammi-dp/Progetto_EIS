@@ -76,12 +76,11 @@ for img_id in tqdm(test_meta.keys(), desc="Test loop"):
     print(f'Tipo: {type}')
 
     # Istanzia oggetti
-    rag_img = ImprovedMRAGWithTraining(
+    rag_img = MRAGWithTraining(
         query_path=path,
         type=type,
         top_k=5,
         approach="multimodal",
-        attention_type='cross_modal',
         auto_train=True)
 
     similar = rag_img.run(None)
@@ -118,9 +117,11 @@ Using both the image and the clinical information, generate a *detailed, concise
 
 
     image_resized = transform(image)
+    '''
     plt.figure(figsize=(10, 10))
     plt.imshow(image_resized)
     plt.show()
+    '''
     inputs = processor(text=[prompt], images=[image_resized], return_tensors="pt").to(device)
 
 

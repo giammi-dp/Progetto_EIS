@@ -139,9 +139,11 @@ for img_id in tqdm(test_meta.keys(), desc="Test loop"):
 
 
     image_resized = transform(image)
+    '''
     plt.figure(figsize=(10, 10))
     plt.imshow(image_resized)
     plt.show()
+    '''
     inputs = processor(text=[prompt], images=[image_resized], return_tensors="pt").to(device)
 
     # Generazione report
@@ -177,6 +179,6 @@ for img_id in tqdm(test_meta.keys(), desc="Test loop"):
 
 # Salva tutti i risultati
 df_out = pd.DataFrame(results)
-df_out.to_csv("evaluation_pipeline_VRAG_1.csv", index=False)
+df_out.to_csv("evaluation_pipeline_VRAG.csv", index=False)
 print(" Test completato")
 

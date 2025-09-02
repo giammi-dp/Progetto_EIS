@@ -98,7 +98,7 @@ with open('MMRAG/json_e_metadata_report_medici/global_finding_test.json') as f:
 
 results = []
 
-test_meta = dict(list(test_meta.items())[:30])
+test_meta = dict(list(test_meta.items()))
 
 for img_id in tqdm(test_meta.keys(), desc="Test loop"):
     print(f'Processing {img_id}')
@@ -139,9 +139,11 @@ Using the image, generate a *detailed, concise, and professional medical diagnos
 
 
     image_resized = transform(image)
+    '''
     plt.figure(figsize=(10, 10))
     plt.imshow(image_resized)
     plt.show()
+    '''
     inputs = processor(text=[prompt], images=[image_resized], return_tensors="pt").to(device)
 
 

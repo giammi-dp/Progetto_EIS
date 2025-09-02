@@ -66,7 +66,7 @@ rag_img = MRAGWithTraining(
 results = []
 
 for item in tqdm(test_meta[:50], desc="Test loop"):
-    image_path = item['file_path']
+    image_path = '../' + item['file_path']
     case_id = item['case_id']
     ground_truth = case_text_map.get(case_id, "")
     cleaned_ground_truth = clean_reference_text(ground_truth, False)
@@ -142,5 +142,5 @@ Using both the image and the clinical information, generate a *detailed, concise
 
 # Salva tutti i risultati
 df_out = pd.DataFrame(results)
-df_out.to_csv("evaluation_multicare_MMRAG_V1.csv", index=False)
+df_out.to_csv("evaluation_multicare_MMRAG.csv", index=False)
 print(" Test completato")

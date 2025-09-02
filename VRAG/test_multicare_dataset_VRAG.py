@@ -47,7 +47,7 @@ rag_img = VRAG(query="", image_path="", top_k=3)
 
 results = []
 
-for item in tqdm(test_meta[41:51], desc="Test loop"):
+for item in tqdm(test_meta[:50], desc="Test loop"):
     image_path = '../' + item['file_path']
     case_id = item['case_id']
     ground_truth = case_text_map.get(case_id, "")
@@ -59,7 +59,7 @@ for item in tqdm(test_meta[41:51], desc="Test loop"):
     rag_img.query = caption
     similar = rag_img.run()
 
-    print(similar)
+    #print(similar)
 
     prompt = f"""
 <image>
@@ -121,5 +121,5 @@ Using both the image and the clinical information, generate a *detailed, concise
 
 # Salva tutti i risultati
 df_out = pd.DataFrame(results)
-df_out.to_csv("eval_all_metrics_41-50_cases.csv", index=False)
+df_out.to_csv("evaluation_multicare_VRAG.csv", index=False)
 print(" Test completato")

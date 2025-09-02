@@ -58,4 +58,4 @@ with gr.Blocks() as demo:
         outputs=[chatbot, image_output, user_input]  # l'ultimo aggiorna la textbox
     )
 
-demo.launch(share=True)
+demo.launch()

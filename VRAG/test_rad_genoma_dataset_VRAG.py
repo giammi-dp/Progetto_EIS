@@ -135,5 +135,5 @@ Using both the image and the clinical information, generate a *detailed, concise
 
 # Salva tutti i risultati
 df_out = pd.DataFrame(results)
-df_out.to_csv("evaluation_rad_genoma_VRAG2.csv", index=False)
+df_out.to_csv("evaluation_rad_genoma_VRAG.csv", index=False)
 print(" Test completato")

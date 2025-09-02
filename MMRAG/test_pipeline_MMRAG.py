@@ -63,7 +63,7 @@ except Exception as e:
 with open('json_e_metadata_report_medici/global_finding_test.json', 'r') as file:
     data = json.load(file)
 
-test_meta = dict(list(data.items())[30:])
+test_meta = dict(list(data.items()))
 
 for img_id in tqdm(test_meta.keys(), desc="Test loop"):
     image_path = os.path.join('../ASNR-MICCAI-BraTS2023-Challenge-TrainingData', img_id)
@@ -113,12 +113,11 @@ for img_id in tqdm(test_meta.keys(), desc="Test loop"):
 
 
     # Istanzia oggetti
-    rag_img = ImprovedMRAGWithTraining(
+    rag_img = MRAGWithTraining(
         query_path=path,
         type=type,
         top_k=3,
         approach="multimodal",
-        attention_type='cross_modal',
         auto_train=True)
 
     similar = rag_img.run(slice_idx)
@@ -150,9 +149,11 @@ for img_id in tqdm(test_meta.keys(), desc="Test loop"):
 
 
     image_resized = transform(image)
+    '''
     plt.figure(figsize=(10, 10))
     plt.imshow(image_resized)
     plt.show()
+    '''
     inputs = processor(text=[prompt], images=[image_resized], return_tensors="pt").to(device)
 
     # 5. Generazione report
@@ -188,6 +189,6 @@ for img_id in tqdm(test_meta.keys(), desc="Test loop"):
 
 # Salva tutti i risultati
 df_out = pd.DataFrame(results)
-df_out.to_csv("evaluation_pipeline_MMRAG_LL1.csv", index=False)
+df_out.to_csv("evaluation_pipeline_MMRAG.csv", index=False)
 print(" Test completato")
 

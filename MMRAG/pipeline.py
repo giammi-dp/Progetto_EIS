@@ -1,5 +1,4 @@
 
-from utils import evaluate_all, clean_reference_text
 from monai.networks.nets import SegResNet
 from segmentator import Segmentator
 
@@ -89,12 +88,11 @@ def run(image_id, prompt_user):
     elif 'MEN' in image_id:
         type = 'MEN'
 
-    rag_img = ImprovedMRAGWithTraining(
+    rag_img = MRAGWithTraining(
             query_path=path,
             type=type,
             top_k=3,
             approach="multimodal",
-            attention_type='cross_modal',
             auto_train=True)
 
     similar = rag_img.run(slice_idx)
