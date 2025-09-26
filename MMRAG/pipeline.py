@@ -1,4 +1,3 @@
-
 from monai.networks.nets import SegResNet
 from segmentator import Segmentator
 
